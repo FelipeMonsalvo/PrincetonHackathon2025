@@ -16,6 +16,9 @@ templates = Jinja2Templates(directory="templates")
 # Initialize OpenAI client
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
+# Mount static files here
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
 class ChatMessage(BaseModel):
     message: str
 
@@ -29,6 +32,7 @@ async def chat_endpoint(chat: ChatMessage):
     response = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[{"role": "user", "content": chat.message}],
+        max_tokens=500,
     )
     ai_reply = response.choices[0].message.content
     return JSONResponse({"reply": ai_reply})

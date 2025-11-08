@@ -2,4 +2,4 @@
 venv/
 .env/
 *.env
-.envrc
+.envrc.env
