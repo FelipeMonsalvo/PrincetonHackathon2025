@@ -3,15 +3,70 @@
   <head>
     <title>Chatbot</title>
     <style>
-      body { font-family: sans-serif; width: 400px; margin: 50px auto; }
-      #chat { border: 1px solid #ccc; padding: 10px; height: 400px; overflow-y: scroll; }
-      #input { width: 100%; padding: 10px; }
+      body { 
+        font-family: sans-serif; 
+        width: 600px; 
+        margin: 50px auto; 
+        padding: 20px;
+      }
+      .header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 10px;
+      }
+      h2 {
+        margin: 0;
+      }
+      #newChatBtn {
+        padding: 8px 16px;
+        background-color: #007bff;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 14px;
+      }
+      #newChatBtn:hover {
+        background-color: #0056b3;
+      }
+      #chat { 
+        border: 1px solid #ccc; 
+        padding: 15px; 
+        height: 400px; 
+        overflow-y: scroll;
+        background-color: #f9f9f9;
+        border-radius: 4px;
+        margin-bottom: 10px;
+      }
+      #chat p {
+        margin: 10px 0;
+        padding: 8px;
+        border-radius: 4px;
+      }
+      #chat p b {
+        color: #333;
+      }
+      #input { 
+        width: calc(100% - 20px); 
+        padding: 10px; 
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        font-size: 14px;
+      }
+      #input:disabled {
+        background-color: #f0f0f0;
+        cursor: not-allowed;
+      }
     </style>
   </head>
   <body>
-    <h2>Chatbot Demo</h2>
+    <div class="header">
+      <h2>Chatbot Demo</h2>
+      <button id="newChatBtn" onclick="newChat()">New Chat</button>
+    </div>
     <div id="chat"></div>
-    <input id="input" placeholder="Type a message..." onkeydown="sendOnEnter(event)" />
+    <input id="input" placeholder="Type a message and press Enter..." onkeydown="sendOnEnter(event)" />
     <script src="{{ url_for('static', path='script.js') }}"></script>
   </body>
 </html>

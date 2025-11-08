@@ -7,6 +7,7 @@ from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 from openai import OpenAI
 from dotenv import load_dotenv
+import os
 
 load_dotenv()
 
@@ -16,33 +17,42 @@ templates = Jinja2Templates(directory="templates")
 
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-def load_system_prompt():
-    path = os.path.join(os.path.dirname(__file__), "prompts", "system_prompt.xml")
-    tree = ET.parse(path)
-    root = tree.getroot()
-    purpose = root.findtext("Purpose", default="")
-    guidelines = root.findtext("Guidelines", default="")
-    return f"{purpose.strip()}\n\nGuidelines:\n{guidelines.strip()}"
-
-SYSTEM_PROMPT = load_system_prompt()
+# Mount static files here
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 class ChatMessage(BaseModel):
     message: str
+    session_id: Optional[str] = None
+
+class ChatResponse(BaseModel):
+    reply: str
+    session_id: str
 
 @app.get("/", response_class=HTMLResponse)
 async def get_home(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
 
-@app.post("/chat")
+@app.post("/chat", response_model=ChatResponse)
 async def chat_endpoint(chat: ChatMessage):
+    """Handle the AI chat call."""
     response = client.chat.completions.create(
         model="gpt-4o-mini",
-        messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": chat.message},
-        ],
+        messages=[{"role": "user", "content": chat.message}],
         max_tokens=500,
     )
+    
+    # Extract AI reply
     ai_reply = response.choices[0].message.content
-    return JSONResponse({"reply": ai_reply})
+    
+    # Add AI response to conversation history
+    conversations[session_id].append({"role": "assistant", "content": ai_reply})
+    
+    return ChatResponse(reply=ai_reply, session_id=session_id)
+
+@app.post("/chat/new")
+async def new_chat():
+    """Create a new chat session."""
+    session_id = str(uuid.uuid4())
+    conversations[session_id] = []
+    return JSONResponse({"session_id": session_id})
 
