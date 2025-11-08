@@ -1,5 +1,0 @@
-# Virtual environments
-venv/
-.env/
-*.env
-.envrc
