@@ -38,16 +38,8 @@ pip install -r requirements.txt
 ### Using FastMCP CLI (Recommended)
 
 ```bash
-fastmcp run server.py
+fastmcp run server.py:mcp --transport http --port 8001
 ```
-
-### Alternative: Direct Python
-
-```bash
-python server.py
-```
-
-The server will start and communicate via stdio, waiting for MCP client connections (like ChatGPT).
 
 ## Available Tools
 
