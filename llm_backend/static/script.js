@@ -18,6 +18,25 @@ function newChat() {
   chatDiv.innerHTML = '<div class="empty-state"><p>Start a conversation by typing a message below.</p></div>';
 }
 
+function parseMessage(content) {
+  // First escape HTML to prevent XSS
+  let parsed = content
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+  
+  // Convert markdown bold **text** to <strong>text</strong> (process first)
+  parsed = parsed.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  
+  // Convert markdown italic *text* to <em>text</em> (process after bold to avoid conflicts)
+  parsed = parsed.replace(/\*([^*]+?)\*/g, '<em>$1</em>');
+  
+  // Convert \n to <br> tags
+  parsed = parsed.replace(/\\n/g, '<br>').replace(/\n/g, '<br>');
+  
+  return parsed;
+}
+
 function addMessage(content, type = 'assistant') {
   const chatDiv = document.getElementById("chat");
   
@@ -31,9 +50,13 @@ function addMessage(content, type = 'assistant') {
   messageDiv.className = `message message-${type}`;
   
   const label = type === 'user' ? 'You' : type === 'error' ? 'Error' : 'AI';
+  
+  // Parse content for AI messages (convert \n to line breaks)
+  const parsedContent = type === 'assistant' ? parseMessage(content) : content.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  
   messageDiv.innerHTML = `
     <div class="message-label">${label}</div>
-    <div>${content}</div>
+    <div>${parsedContent}</div>
   `;
   
   chatDiv.appendChild(messageDiv);

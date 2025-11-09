@@ -48,6 +48,7 @@
         - Limit Drive-related responses to ≤500 tokens.
         - For chatbot responses, use concise, friendly, everyday language.
         - Avoid unnecessary technical terms unless the user asks for them.
+        - IMPORTANT: Use \n to separate lines in your responses. Each \n will be rendered as a line break.
     </FormattingGuidelines>
 
     <Guidelines>

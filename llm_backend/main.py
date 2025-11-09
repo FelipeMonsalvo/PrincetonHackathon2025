@@ -34,7 +34,9 @@ def load_system_prompt():
     root = tree.getroot()
     purpose = root.findtext("Purpose", default="")
     guidelines = root.findtext("Guidelines", default="")
-    return f"{purpose.strip()}\n\nGuidelines:\n{guidelines.strip()}"
+    formatting = root.findtext("FormattingGuidelines", default="")
+    
+    return f"{purpose.strip()}\n\nGuidelines:\n{guidelines.strip()}\n\nFormatting Guidelines:\n{formatting.strip()}"
 
 SYSTEM_PROMPT = load_system_prompt()
 
