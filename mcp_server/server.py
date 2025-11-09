@@ -183,7 +183,71 @@ def get_file(file_id: str) -> str:
         # For non-Google Docs, just return metadata for now
         return f"File: {file['name']} (type: {mime})\n\nContent preview not supported yet."
 
+@mcp.tool()
+def summarize_file(file_id: str) -> str:
+    """
+    Fetch a file from Google Drive and return the first 100 characters of text.
+    Supports Google Docs, .txt, .md, and .docx.
+    """
+    service = get_drive_service()
+    
+    # Get file metadata
+    file = service.files().get(fileId=file_id, fields="id, name, mimeType").execute()
+    mime = file["mimeType"]
+    file_name = file["name"]
+    text = ""
 
+    from googleapiclient.http import MediaIoBaseDownload
+    import io
+
+    try:
+        # Google Docs
+        if mime == "application/vnd.google-apps.document":
+            request = service.files().export_media(fileId=file_id, mimeType="text/plain")
+            fh = io.BytesIO()
+            downloader = MediaIoBaseDownload(fh, request)
+            done = False
+            while not done:
+                _, done = downloader.next_chunk()
+            fh.seek(0)
+            text = fh.read().decode("utf-8")
+
+        # Plain text or Markdown
+        elif mime == "text/plain" or file_name.lower().endswith(".md"):
+            request = service.files().get_media(fileId=file_id)
+            fh = io.BytesIO()
+            downloader = MediaIoBaseDownload(fh, request)
+            done = False
+            while not done:
+                _, done = downloader.next_chunk()
+            fh.seek(0)
+            text = fh.read().decode("utf-8")
+
+        # DOCX - Fixed condition check
+        elif (mime == "application/vnd.openxmlformats-officedocument.wordprocessingml.document" or 
+              file_name.lower().endswith(".docx")):
+            from docx import Document
+            request = service.files().get_media(fileId=file_id)
+            fh = io.BytesIO()
+            downloader = MediaIoBaseDownload(fh, request)
+            done = False
+            while not done:
+                _, done = downloader.next_chunk()
+            fh.seek(0)
+            doc = Document(fh)
+            text = "\n".join([p.text for p in doc.paragraphs])
+
+        # Unsupported file types
+        else:
+            return f"File type not supported for summarization: {file_name} (MIME type: {mime})"
+
+        # Truncate to first 100 characters
+        truncated_text = text[:100].replace("\n", " ").strip()
+        return f"File: {file_name}\nFirst 100 characters:\n{truncated_text}"
+
+    except Exception as e:
+        return f"Error reading file {file_name}: {str(e)}"
+    
 @mcp.resource("drive://{file_id}", name="drive-file", description="Read a file by ID", mime_type="text/plain")
 def get_file_resource(file_id: str) -> str:
     """Return raw file content from Google Drive."""
