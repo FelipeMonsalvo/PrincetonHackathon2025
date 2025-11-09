@@ -14,10 +14,8 @@ mcp = FastMCP(name="file-search-mcp")
 @mcp.tool()
 def search_files(query: str) -> str:
     """Search for files by query string. Searches both file names and content.
-    
     Args:
         query: The search query to find matching files
-        
     Returns:
         A formatted string with search results
     """
