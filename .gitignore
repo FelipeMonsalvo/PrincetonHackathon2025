@@ -40,3 +40,7 @@ venv.bak/
 .env
 .env.local
 .env.*.local
+
+# Google API credentials and tokens
+credentials.json
+mcp_server/token.pickle

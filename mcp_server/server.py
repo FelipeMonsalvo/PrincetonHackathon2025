@@ -1,72 +1,79 @@
 from fastmcp import FastMCP
+from drive_utils import get_drive_service
 
-# Dummy files for hackathon testing
-FILES = [
-    {"id": "1", "name": "meeting_notes.txt", "content": "Discuss project deadlines and tasks"},
-    {"id": "2", "name": "project_ideas.txt", "content": "Ideas for new hackathon projects"},
-    {"id": "3", "name": "document3.txt", "content": "Random notes and reminders"},
-    {"id": "4", "name": "tasks.txt", "content": "Finish report, call supplier, update slides"},
-]
-
-mcp = FastMCP(name="file-search-mcp")
-
-
-@mcp.tool()
-def search_files(query: str) -> str:
-    """Search for files by query string. Searches both file names and content.
-    Args:
-        query: The search query to find matching files
-    Returns:
-        A formatted string with search results
-    """
-    query_lower = query.lower()
-    
-    results = [
-        f for f in FILES 
-        if query_lower in f["name"].lower() or query_lower in f["content"].lower()
-    ]
-    
-    if results:
-        result_text = f"Found {len(results)} file(s):\n\n"
-        for file in results:
-            result_text += f"ID: {file['id']}\n"
-            result_text += f"Name: {file['name']}\n"
-            result_text += f"Content: {file['content']}\n\n"
-        return result_text
-    else:
-        return f"No files found matching query: {query}"
+mcp = FastMCP(name="google-drive-mcp")
 
 
 @mcp.tool()
 def list_files() -> str:
-    """List all available files.
+    """List first 10 files in Google Drive."""
+    service = get_drive_service()
+    results = service.files().list(
+        pageSize=10, fields="files(id, name, mimeType, modifiedTime)"
+    ).execute()
+    files = results.get("files", [])
+    if not files:
+        return "No files found in Google Drive."
     
-    Returns:
-        A formatted string listing all files
-    """
-    result_text = "Available files:\n\n"
-    for file in FILES:
-        result_text += f"ID: {file['id']}\n"
-        result_text += f"Name: {file['name']}\n"
-        result_text += f"Content preview: {file['content'][:50]}...\n\n"
+    result_text = "Available Google Drive files:\n\n"
+    for f in files:
+        result_text += f"ID: {f['id']}\n"
+        result_text += f"Name: {f['name']}\n"
+        result_text += f"Type: {f['mimeType']}\n"
+        result_text += f"Modified: {f['modifiedTime']}\n\n"
+    return result_text
+
+
+@mcp.tool()
+def search_files(query: str) -> str:
+    """Search Google Drive for files matching a query string."""
+    service = get_drive_service()
+    results = service.files().list(
+        q=f"name contains '{query}' or fullText contains '{query}'",
+        fields="files(id, name, mimeType, modifiedTime)",
+        pageSize=10,
+    ).execute()
+    files = results.get("files", [])
+    if not files:
+        return f"No files found matching query: {query}"
+
+    result_text = f"Found {len(files)} file(s) matching '{query}':\n\n"
+    for f in files:
+        result_text += f"ID: {f['id']}\n"
+        result_text += f"Name: {f['name']}\n"
+        result_text += f"Type: {f['mimeType']}\n"
+        result_text += f"Modified: {f['modifiedTime']}\n\n"
     return result_text
 
 
 @mcp.tool()
 def get_file(file_id: str) -> str:
-    file = next((f for f in FILES if f["id"] == file_id), None)
-    if file:
-        return f"File: {file['name']}\n\nContent:\n{file['content']}"
+    """Read a Google Drive file by ID (Google Docs or plain text)."""
+    service = get_drive_service()
+    file = service.files().get(fileId=file_id, fields="id, name, mimeType").execute()
+    mime = file["mimeType"]
+
+    # Handle Google Docs (convert to plain text)
+    if mime == "application/vnd.google-apps.document":
+        from googleapiclient.http import MediaIoBaseDownload
+        import io
+
+        request = service.files().export_media(fileId=file_id, mimeType="text/plain")
+        fh = io.BytesIO()
+        downloader = MediaIoBaseDownload(fh, request)
+        done = False
+        while not done:
+            status, done = downloader.next_chunk()
+        fh.seek(0)
+        return f"File: {file['name']}\n\n{fh.read().decode('utf-8')}"
+
     else:
-        return f"File with ID '{file_id}' not found"
+        # For non-Google Docs, just return metadata for now
+        return f"File: {file['name']} (type: {mime})\n\nContent preview not supported yet."
 
 
-@mcp.resource("file://{file_id}", name="file", description="Read a file by ID", mime_type="text/plain")
+@mcp.resource("drive://{file_id}", name="drive-file", description="Read a file by ID", mime_type="text/plain")
 def get_file_resource(file_id: str) -> str:
-    """Get file content by ID"""
-    file = next((f for f in FILES if f["id"] == file_id), None)
-    if file:
-        return file['content']
-    else:
-        raise ValueError(f"File with ID '{file_id}' not found")
+    """Return raw file content from Google Drive."""
+    return get_file(file_id)
 
