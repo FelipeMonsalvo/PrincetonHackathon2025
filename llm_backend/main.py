@@ -20,9 +20,13 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
 # Initialize OpenAI client
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+if not OPENAI_API_KEY:
+    raise ValueError("OPENAI_API_KEY environment variable is required")
 
-# Load system prompt from XML
+client = OpenAI(api_key=OPENAI_API_KEY)
+
+# Load system prompt
 def load_system_prompt():
     """Load system prompt from XML file."""
     path = os.path.join(os.path.dirname(__file__), "prompts", "system_prompt.xml")
@@ -34,7 +38,7 @@ def load_system_prompt():
 
 SYSTEM_PROMPT = load_system_prompt()
 
-# In-memory conversation storage (per session)
+# In-memory conversation storage
 conversations = {}
 
 # Pydantic models for request/response validation
@@ -60,14 +64,6 @@ async def new_chat():
 
 @app.post("/chat", response_model=ChatResponse)
 async def chat_endpoint(chat: ChatMessage):
-    """
-    Handle AI chat with per-session conversation memory and MCP tool support.
-    
-    This endpoint:
-    1. Gets MCP tools and makes them available to the AI
-    2. Allows the AI to call MCP tools during conversation
-    3. Executes tool calls and continues the conversation with results
-    """
     # Create or get existing session
     session_id = chat.session_id or str(uuid.uuid4())
     if session_id not in conversations:
@@ -90,56 +86,74 @@ async def chat_endpoint(chat: ChatMessage):
     max_iterations = 5
     iteration = 0
     
-    while iteration < max_iterations:
-        iteration += 1
-        
-        # Call OpenAI API with tools available
-        # If mcp_tools is empty, OpenAI won't use function calling
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=messages,
-            tools=mcp_tools if mcp_tools else None,  # Pass tools to OpenAI
-            tool_choice="auto" if mcp_tools else None,  # Let AI decide when to use tools
-            max_tokens=500,
-        )
-
-        response_message = response.choices[0].message
-        
-        # Add assistant's response to messages (needed for conversation flow)
-        messages.append(response_message)
-
-        # Check if the AI wants to call a tool
-        if response_message.tool_calls:
-            # AI wants to call one or more tools
-            # Execute each tool call
-            for tool_call in response_message.tool_calls:
-                tool_name = tool_call.function.name
-                # Parse the arguments (OpenAI sends them as JSON string)
-                tool_args = json.loads(tool_call.function.arguments)
-                
-                # Execute the MCP tool
-                tool_result = await execute_mcp_tool(tool_name, tool_args)
-                
-                # Add tool result to messages so AI can use it
-                # OpenAI expects this format for tool results
-                messages.append({
-                    "role": "tool",
-                    "tool_call_id": tool_call.id,
-                    "name": tool_name,
-                    "content": tool_result
-                })
+    try:
+        while iteration < max_iterations:
+            iteration += 1
             
-            # Continue the loop - AI will get the tool results and respond
-            continue
+            # Call OpenAI API with tools available
+            try:
+                response = client.chat.completions.create(
+                    model="gpt-4o-mini",
+                    messages=messages,
+                    tools=mcp_tools if mcp_tools else None,  
+                    tool_choice="auto" if mcp_tools else None,  # Let AI decide when to use tools
+                    max_tokens=500,
+                )
+            except Exception as e:
+                error_msg = f"OpenAI API error: {str(e)}"
+                conversations[session_id].append({"role": "assistant", "content": error_msg})
+                return ChatResponse(reply=error_msg, session_id=session_id)
+
+            response_message = response.choices[0].message
+            
+            # Add assistant's response to messages ( conversation flow)
+            messages.append(response_message)
+
+            # Check if the AI wants to call a tool
+            if response_message.tool_calls:
+                for tool_call in response_message.tool_calls:
+                    tool_name = tool_call.function.name
+                    try:
+                        tool_args = json.loads(tool_call.function.arguments)
+                    except json.JSONDecodeError as e:
+                        tool_result = f"Error parsing tool arguments: {str(e)}"
+                        messages.append({
+                            "role": "tool",
+                            "tool_call_id": tool_call.id,
+                            "name": tool_name,
+                            "content": tool_result
+                        })
+                        continue
+                    
+                    # Execute the MCP tool
+                    tool_result = await execute_mcp_tool(tool_name, tool_args)
+                    
+                    # Add tool result to messages so AI can use it
+                    messages.append({
+                        "role": "tool",
+                        "tool_call_id": tool_call.id,
+                        "name": tool_name,
+                        "content": tool_result
+                    })
+                
+                # Continue the loop 
+                continue
+            else:
+                # No tool calls
+                ai_reply = response_message.content
+                
+                # Save assistant message to conversation history
+                conversations[session_id].append({"role": "assistant", "content": ai_reply})
+                
+                return ChatResponse(reply=ai_reply, session_id=session_id)
+
+        # If we hit max iterations, raise an error
+        raise Exception("MAX_ITERATIONS")
+    
+    except Exception as e:
+        if str(e) == "MAX_ITERATIONS":
+            error_msg = "ERROR: MAX ITERATIONS REACHED"
         else:
-            # No tool calls - we have the final AI response
-            ai_reply = response_message.content
-            
-            # Save assistant message to conversation history
-            conversations[session_id].append({"role": "assistant", "content": ai_reply})
-            
-            return ChatResponse(reply=ai_reply, session_id=session_id)
-
-    ai_reply = messages[-1].get("content", "I apologize, but I encountered an issue processing your request.")
-    conversations[session_id].append({"role": "assistant", "content": ai_reply})
-    return ChatResponse(reply=ai_reply, session_id=session_id)
+            error_msg = f"An unexpected error occurred: {str(e)}"
+        conversations[session_id].append({"role": "assistant", "content": error_msg})
+        return ChatResponse(reply=error_msg, session_id=session_id)

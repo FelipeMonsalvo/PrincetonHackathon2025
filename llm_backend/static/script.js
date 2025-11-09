@@ -15,7 +15,57 @@ function setSessionId(sessionId) {
 function newChat() {
   currentSessionId = null;
   const chatDiv = document.getElementById("chat");
-  chatDiv.innerHTML = "<p><i>New conversation started</i></p>";
+  chatDiv.innerHTML = '<div class="empty-state"><p>Start a conversation by typing a message below.</p></div>';
+}
+
+function addMessage(content, type = 'assistant') {
+  const chatDiv = document.getElementById("chat");
+  
+  // Remove empty state if present
+  const emptyState = chatDiv.querySelector('.empty-state');
+  if (emptyState) {
+    emptyState.remove();
+  }
+  
+  const messageDiv = document.createElement("div");
+  messageDiv.className = `message message-${type}`;
+  
+  const label = type === 'user' ? 'You' : type === 'error' ? 'Error' : 'AI';
+  messageDiv.innerHTML = `
+    <div class="message-label">${label}</div>
+    <div>${content}</div>
+  `;
+  
+  chatDiv.appendChild(messageDiv);
+  chatDiv.scrollTop = chatDiv.scrollHeight;
+  
+  return messageDiv;
+}
+
+function showLoading() {
+  const chatDiv = document.getElementById("chat");
+  const emptyState = chatDiv.querySelector('.empty-state');
+  if (emptyState) {
+    emptyState.remove();
+  }
+  
+  const loadingDiv = document.createElement("div");
+  loadingDiv.className = "loading";
+  loadingDiv.id = "loading-indicator";
+  loadingDiv.innerHTML = `
+    <div class="spinner"></div>
+    <span>AI is thinking...</span>
+  `;
+  
+  chatDiv.appendChild(loadingDiv);
+  chatDiv.scrollTop = chatDiv.scrollHeight;
+}
+
+function hideLoading() {
+  const loadingDiv = document.getElementById("loading-indicator");
+  if (loadingDiv) {
+    loadingDiv.remove();
+  }
 }
 
 async function sendOnEnter(event) {
@@ -24,10 +74,12 @@ async function sendOnEnter(event) {
     const msg = input.value.trim();
     if (!msg) return;
 
-    const chatDiv = document.getElementById("chat");
-    chatDiv.innerHTML += `<p><b>You:</b> ${msg}</p>`;
+    addMessage(msg, 'user');
     input.value = "";
-    input.disabled = true; // Disable input while waiting for response
+    input.disabled = true;
+    
+    // Show loading indicator
+    showLoading();
 
     try {
       const sessionId = getSessionId();
@@ -40,19 +92,32 @@ async function sendOnEnter(event) {
         })
       });
 
+      hideLoading();
+
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({ error: `HTTP ${res.status}: ${res.statusText}` }));
+        addMessage(errorData.error || 'An error occurred', 'error');
+        return;
+      }
+
       const data = await res.json();
-      chatDiv.innerHTML += `<p><b>AI:</b> ${data.reply}</p>`;
-      chatDiv.scrollTop = chatDiv.scrollHeight;
+      
+      if (data.reply && data.reply.toLowerCase().includes('error')) {
+        addMessage(data.reply, 'error');
+      } else {
+        addMessage(data.reply || 'No response received', 'assistant');
+      }
       
       // Update session ID if it was created by backend
       if (data.session_id) {
         setSessionId(data.session_id);
       }
     } catch (err) {
-      chatDiv.innerHTML += `<p><b>Error:</b> ${err.message}</p>`;
+      hideLoading();
+      addMessage(`Network error: ${err.message}. Please check your connection and try again.`, 'error');
     } finally {
-      input.disabled = false; // Re-enable input
-      input.focus(); // Focus back on input
+      input.disabled = false;
+      input.focus();
     }
   }
 }
