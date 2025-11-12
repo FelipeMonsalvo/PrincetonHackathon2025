@@ -119,7 +119,7 @@ HTML, CSS, JS – frontend interaction
 🤝 Contributors
 
 TheJos — Princeton Hackathon 2025
-Built with ❤️, caffeine, and a lot of hacking.
+
 
 🧠 Future Improvements
 
